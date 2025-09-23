@@ -34,6 +34,11 @@
       "id": "bowserpool",
       "name": "Bowserlab-Signum Pool",
       "url": "https://bowserlab.ddns.net:8095"
+    },
+    {
+      "id": "vargatech-pool",
+      "name": "Varga-Tech SIGNUM Pool",
+      "url": "https://signamining.vargatech.net"
     }
   ],
   "testnet": [
