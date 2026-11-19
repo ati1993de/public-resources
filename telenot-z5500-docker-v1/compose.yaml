@@ -1,0 +1,108 @@
+# Inoffizielles TELENOT compasZ 5500 Docker-Laborpaket v1.0
+# Maintainer: Attila Varga (Varga-Tech). Nicht von TELENOT unterstützt.
+# Nur für berechtigte Testinstallationen; keine Lizenz oder Produktionsfreigabe enthalten.
+name: telenot-compasz5500-hub-v1
+services:
+  db:
+    image: ati1993/z5500-linux:db-v1.0
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: compasz5500
+      POSTGRES_USER: compasz
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD fehlt}
+    volumes:
+      - postgres_v1_data:/var/lib/postgresql/data
+    networks: [internal]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U compasz -d compasz5500"]
+      interval: 10s
+      timeout: 5s
+      retries: 25
+    security_opt: ["no-new-privileges:true"]
+
+  mq:
+    image: apache/artemis:2.52.0
+    restart: unless-stopped
+    environment:
+      ARTEMIS_USER: ${MQ_USER:-telenotv1}
+      ARTEMIS_PASSWORD: ${MQ_PASSWORD:?MQ_PASSWORD fehlt}
+      ANONYMOUS_LOGIN: "false"
+    volumes:
+      - mq_v1_data:/var/lib/artemis-instance
+    networks: [internal]
+    security_opt: ["no-new-privileges:true"]
+
+  webv2:
+    image: ati1993/z5500-linux:web-v1.0
+    init: true
+    restart: unless-stopped
+    environment:
+      TZ: Europe/Berlin
+      JAVA_TOOL_OPTIONS: "-Duser.home=/var/lib/telenot -Djava.awt.headless=true -Xms128m -Xmx1024m"
+      JDK_JAVA_OPTIONS: "--add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.lang.invoke=ALL-UNNAMED --add-opens=java.base/java.lang.reflect=ALL-UNNAMED --add-opens=java.base/java.io=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED --add-opens=java.base/java.util.concurrent=ALL-UNNAMED --add-opens=java.rmi/sun.rmi.transport=ALL-UNNAMED"
+    ports:
+      - "${WEB_BIND_IP:-127.0.0.1}:${WEB_LOCAL_PORT:-18081}:8080"
+    volumes:
+      - web_v1_state:/var/lib/telenot
+      - ./runtime/web-config:/opt/telenot/runtime-config:ro
+    depends_on:
+      db: {condition: service_healthy}
+      mq: {condition: service_started}
+    networks: [internal, frontend]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+
+  comm-lab:
+    image: ati1993/z5500-linux:comm-v1.0
+    profiles: [services-lab]
+    init: true
+    restart: "no"
+    user: "10001:10001"
+    working_dir: /opt/telenot/app
+    command: ["/usr/local/bin/telenot-service-init.sh", "Communication Server", "java", "-cp", "/opt/telenot/service-config:/opt/telenot/app/isac3-comm-server.jar:/opt/telenot/app/lib/*", "eu.inform.comm.CommServerApplication"]
+    environment:
+      TZ: Europe/Berlin
+      JAVA_TOOL_OPTIONS: "-Duser.home=/var/lib/telenot -Djava.awt.headless=true -Xms128m -Xmx1024m"
+      JDK_JAVA_OPTIONS: "--add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.lang.invoke=ALL-UNNAMED --add-opens=java.base/java.lang.reflect=ALL-UNNAMED --add-opens=java.base/java.io=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED --add-opens=java.base/java.util.concurrent=ALL-UNNAMED --add-opens=java.rmi/sun.rmi.transport=ALL-UNNAMED"
+    volumes:
+      - ./runtime/comm-config:/opt/telenot/service-config:ro
+      - ./runtime/comm-home:/var/lib/telenot:rw
+      - ./runtime/comm-app-config:/opt/telenot/app/config:rw
+    depends_on:
+      db: {condition: service_healthy}
+      mq: {condition: service_started}
+    networks: [internal]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+
+  sched-lab:
+    image: ati1993/z5500-linux:scheduler-v1.0
+    profiles: [services-lab]
+    init: true
+    restart: "no"
+    user: "10001:10001"
+    working_dir: /opt/telenot/app
+    command: ["/usr/local/bin/telenot-service-init.sh", "Scheduler", "java", "-cp", "/opt/telenot/service-config:/opt/telenot/app/isac3-scheduler.jar:/opt/telenot/app/lib/*", "eu.inform.cron.CronServerApplication"]
+    environment:
+      TZ: Europe/Berlin
+      JAVA_TOOL_OPTIONS: "-Duser.home=/var/lib/telenot -Djava.awt.headless=true -Xms128m -Xmx1024m"
+      JDK_JAVA_OPTIONS: "--add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.lang.invoke=ALL-UNNAMED --add-opens=java.base/java.lang.reflect=ALL-UNNAMED --add-opens=java.base/java.io=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED --add-opens=java.base/java.util.concurrent=ALL-UNNAMED --add-opens=java.rmi/sun.rmi.transport=ALL-UNNAMED"
+    volumes:
+      - ./runtime/sched-config:/opt/telenot/service-config:ro
+      - ./runtime/sched-home:/var/lib/telenot:rw
+      - ./runtime/sched-app-config:/opt/telenot/app/config:rw
+    depends_on:
+      db: {condition: service_healthy}
+      mq: {condition: service_started}
+    networks: [internal]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+
+networks:
+  internal:
+    internal: true
+  frontend: {}
+volumes:
+  postgres_v1_data: {}
+  mq_v1_data: {}
+  web_v1_state: {}
